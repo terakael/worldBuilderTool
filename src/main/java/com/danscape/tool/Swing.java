@@ -1,7 +1,7 @@
 package com.danscape.tool;
 
-import java.awt.Button;
 import java.awt.Checkbox;
+import java.awt.CheckboxGroup;
 import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Component;
@@ -17,33 +17,45 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
+import javax.swing.SwingUtilities;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.danscape.tool.jpa.entity.GroundTextureEntity;
+import com.danscape.tool.jpa.entity.NpcEntity;
+import com.danscape.tool.jpa.entity.PlayerEntity;
 import com.danscape.tool.jpa.entity.RoomGroundTextureEntity;
+import com.danscape.tool.jpa.entity.RoomNpcEntity;
 import com.danscape.tool.jpa.entity.RoomSceneryEntity;
 import com.danscape.tool.jpa.entity.SceneryEntity;
+import com.danscape.tool.jpa.entity.SpriteFrameEntity;
 import com.danscape.tool.jpa.entity.SpriteMapEntity;
 import com.danscape.tool.jpa.repository.GroundTextureRepository;
+import com.danscape.tool.jpa.repository.NpcRepository;
+import com.danscape.tool.jpa.repository.PlayerRepository;
 import com.danscape.tool.jpa.repository.RoomGroundTextureRepository;
+import com.danscape.tool.jpa.repository.RoomNpcRepository;
 import com.danscape.tool.jpa.repository.RoomSceneryRepository;
 import com.danscape.tool.jpa.repository.SceneryRepository;
+import com.danscape.tool.jpa.repository.SpriteFrameRepository;
 import com.danscape.tool.jpa.repository.SpriteMapRepository;
 
 import lombok.Setter;
@@ -66,8 +78,25 @@ public class Swing extends Frame implements ActionListener {
 	@Autowired
 	private SceneryRepository sceneryRepository;
 	
-	private static final int windowWidth = 800;
-	private static final int windowHeight = 600;
+	@Autowired
+	private SpriteFrameRepository spriteFrameRepository;
+	
+	@Autowired
+	private NpcRepository npcRepository;
+	
+	@Autowired
+	private RoomNpcRepository roomNpcRepository;
+	
+	@Autowired
+	private PlayerRepository playerRepository;
+	
+	private static int floor = -1;
+	private static int localWidth = 50;
+	private static int localHeight = 30;
+	
+	private static final int windowWidth = (32*localWidth) + 245;
+	private static final int windowHeight = 32*localHeight + 50;
+	
 	private static boolean fullLoad = true;
 
 	private Panel worldPanel = null;
@@ -75,31 +104,41 @@ public class Swing extends Frame implements ActionListener {
 	
 	private GroundTextureEntity selectedGroundTexture = null;
 	private SceneryEntity selectedScenery = null;
+	private NpcEntity selectedNpc = null;
 	
-	private ImageComponent[] worldHolder = new ImageComponent[250*250];
+	private ImageComponent[] worldHolder = new ImageComponent[localWidth*localHeight];
+	private ImageComponent hoverComponent = null;
+	int offsetX = 18875;
+	int offsetY = 18911;
+	
+	int counter = 0;
 	
 	private List<SpriteMapEntity> groundTextureSprites = null; // to show in the ground texture droplist
 	private List<SpriteMapEntity> scenerySprites = null; // to show in the scenery droplist
+	private List<SpriteMapEntity> npcSprites = null;
 	
 	private HashMap<Integer, BufferedImage> imageMap;
 	private HashMap<Integer, List<GroundTextureEntity>> groundTextureEntityMapBySpriteMapId;
 	private Map<Integer, GroundTextureEntity> groundTextureEntityMapById;
-	private List<RoomGroundTextureEntity> roomGroundTextureEntities;
-	private List<SceneryEntity> sceneryEntities;
 	private Map<Integer, SceneryEntity> sceneryEntitiesById;
-	private List<RoomSceneryEntity> roomSceneryEntities;
-//	List<RoomGroundTextureEntity> modifiedGroundTextures = new ArrayList<>();
-//	List<RoomSceneryEntity> modifiedScenery = new ArrayList<>();
-//	List<RoomSceneryEntity> deletedScenery = new ArrayList<>();
+	private Map<Integer, NpcEntity> npcEntitiesById;
+	private Map<Integer, SpriteFrameEntity> spriteFrames;
 	private boolean deleteScenery = false;
 	
 	public Swing() {
 		
 	}
 	
-	public void go() throws IOException, SQLException {		
+	public void go() throws IOException, SQLException {
+		Optional<PlayerEntity> godEntity = playerRepository.findById(3);// god
+		if (godEntity.isPresent()) {
+			floor = godEntity.get().getFloor();
+			offsetX = (godEntity.get().getTileId() % 25000) - (localWidth / 2);
+			offsetY = (godEntity.get().getTileId() / 25000) - (localHeight / 2);
+		}
 		
-		roomGroundTextureEntities = roomGroundTextureRepository.findAll().stream().sorted(Comparator.comparing(RoomGroundTextureEntity::getTileId)).collect(Collectors.toList());
+		spriteFrames = spriteFrameRepository.findAll().stream().collect(Collectors.toMap(SpriteFrameEntity::getId, Function.identity()));
+		
 		groundTextureEntityMapBySpriteMapId = new HashMap<>();
 		groundTextureEntityMapById = groundTextureRepository.findAll().stream().collect(Collectors.toMap(GroundTextureEntity::getId, Function.identity()));
 		imageMap = new HashMap<>();
@@ -121,10 +160,14 @@ public class Swing extends Frame implements ActionListener {
 			if (!imageMap.containsKey(spriteMap.getId()))
 				imageMap.put(spriteMap.getId(), ImageIO.read(spriteMap.getData().getBinaryStream()));
 		}
+		sceneryEntitiesById = sceneryRepository.findAll().stream().collect(Collectors.toMap(SceneryEntity::getId, Function.identity()));
 		
-		sceneryEntities = sceneryRepository.findAll();
-		sceneryEntitiesById = sceneryEntities.stream().collect(Collectors.toMap(SceneryEntity::getId, Function.identity()));
-		roomSceneryEntities = roomSceneryRepository.findAll();
+		npcSprites = repository.getNpcSprites();
+		for (SpriteMapEntity spriteMap : npcSprites) {
+			if (!imageMap.containsKey(spriteMap.getId()))
+				imageMap.put(spriteMap.getId(), ImageIO.read(spriteMap.getData().getBinaryStream()));
+		}
+		npcEntitiesById = npcRepository.findAll().stream().collect(Collectors.toMap(NpcEntity::getId, Function.identity()));
 		
 		setLayout(new GridBagLayout());
 		GridBagConstraints c = new GridBagConstraints();
@@ -168,9 +211,16 @@ public class Swing extends Frame implements ActionListener {
 		private static final long serialVersionUID = 1684094236921916561L;
 		@Setter private GroundTextureEntity groundTexture = null;
 		@Setter private SceneryEntity sceneryEntity = null;
+		@Setter private NpcEntity npcEntity = null;
 		
-		public ImageComponent(GroundTextureEntity groundTexture) {
+		public ImageComponent() {
+			
+		}
+		
+		public ImageComponent(GroundTextureEntity groundTexture, SceneryEntity sceneryEntity, NpcEntity npcEntity) {
 			this.groundTexture = groundTexture;
+			this.sceneryEntity = sceneryEntity;
+			this.npcEntity = npcEntity;
 		}
 		
 		@Override
@@ -179,12 +229,60 @@ public class Swing extends Frame implements ActionListener {
 				g.drawImage(imageMap.get(groundTexture.getSpriteMapId()), 0, 0, 32, 32, groundTexture.getX(), groundTexture.getY(), groundTexture.getX() + 32, groundTexture.getY() + 32, null);
 			}
 			
-			if (sceneryEntity != null && imageMap.containsKey(sceneryEntity.getSpriteMapId())) {
-				g.drawImage(imageMap.get(sceneryEntity.getSpriteMapId()), 
-						0, 0, 
-						32, 32, 
-						sceneryEntity.getX(), sceneryEntity.getY(), 
-						sceneryEntity.getX() + sceneryEntity.getW(), sceneryEntity.getY() + sceneryEntity.getH(), null);
+			if (sceneryEntity != null) {
+				SpriteFrameEntity spriteFrame = spriteFrames.get(sceneryEntity.getSpriteFrameId());
+				if (imageMap.containsKey(spriteFrame.getSpriteMapId())) {
+					g.drawImage(imageMap.get(spriteFrame.getSpriteMapId()), 
+							0, 0, 
+							32, 32, 
+							spriteFrame.getX(), spriteFrame.getY(), 
+							spriteFrame.getX() + spriteFrame.getW(), spriteFrame.getY() + spriteFrame.getH(), null);
+				}
+			}
+			
+			if (npcEntity != null) {
+				SpriteFrameEntity spriteFrame = spriteFrames.get(npcEntity.getDownId());
+				if (imageMap.containsKey(spriteFrame.getSpriteMapId())) {
+					g.drawImage(imageMap.get(spriteFrame.getSpriteMapId()), 
+							0, 0, 
+							32, 32, 
+							spriteFrame.getX(), spriteFrame.getY(), 
+							spriteFrame.getX() + spriteFrame.getW(), spriteFrame.getY() + spriteFrame.getH(), null);
+				}
+			}
+			
+			if (hoverComponent == this) {
+				if (selectedGroundTexture != null && imageMap.containsKey(selectedGroundTexture.getSpriteMapId())) {
+					g.drawImage(imageMap.get(selectedGroundTexture.getSpriteMapId()), 0, 0, 32, 32, selectedGroundTexture.getX(), selectedGroundTexture.getY(), selectedGroundTexture.getX() + 32, selectedGroundTexture.getY() + 32, null);
+				}
+				
+				if (selectedScenery != null) {
+					SpriteFrameEntity spriteFrame = spriteFrames.get(selectedScenery.getSpriteFrameId());
+					if (imageMap.containsKey(spriteFrame.getSpriteMapId())) {
+						g.drawImage(imageMap.get(spriteFrame.getSpriteMapId()), 
+								0, 0, 
+								32, 32, 
+								spriteFrame.getX(), spriteFrame.getY(), 
+								spriteFrame.getX() + spriteFrame.getW(), spriteFrame.getY() + spriteFrame.getH(), null);
+					}
+				}
+				
+				if (selectedNpc != null) {
+					SpriteFrameEntity spriteFrame = spriteFrames.get(selectedNpc.getDownId());
+					if (imageMap.containsKey(spriteFrame.getSpriteMapId())) {
+						g.drawImage(imageMap.get(spriteFrame.getSpriteMapId()), 
+								0, 0, 
+								32, 32, 
+								spriteFrame.getX(), spriteFrame.getY(), 
+								spriteFrame.getX() + spriteFrame.getW(), spriteFrame.getY() + spriteFrame.getH(), null);
+					}
+				}
+				
+				g.setColor(Color.WHITE);				
+				g.drawRect(0, 0, 2, 2);
+				g.drawRect(29, 0, 2, 2);
+				g.drawRect(0, 29, 2, 2);
+				g.drawRect(30, 29, 2, 2);
 			}
 		}
 		
@@ -207,64 +305,175 @@ public class Swing extends Frame implements ActionListener {
 	private Panel setupWorldPanel() {
 		Panel panel = new Panel();
 		panel.setBackground(new Color(80, 80, 80));
+		panel.setFocusable(true);
+		
 		
 		if (fullLoad) {
-			panel.setLayout(new GridLayout(250, 250));
+			panel.setLayout(new GridLayout(localHeight, localWidth));
 			System.out.println("loading world holder...");
-			for (RoomGroundTextureEntity entity : roomGroundTextureEntities) {
-				worldHolder[entity.getTileId()] = new ImageComponent(groundTextureEntityMapById.get(entity.getGroundTextureId()));
-				panel.add(worldHolder[entity.getTileId()]);
-			}
 			
-			for (RoomSceneryEntity entity : roomSceneryEntities) {
-				worldHolder[entity.getTileId()].sceneryEntity = sceneryEntitiesById.get(entity.getSceneryId());
+			for (int i = 0; i < localWidth * localHeight; ++i) {
+				worldHolder[i] = new ImageComponent();
+				panel.add(worldHolder[i]);
 			}
-			
+
+			updateWorldHolder();
 			System.out.println("world holder loaded.");
 		}
 		
 		panel.addMouseListener(new MouseAdapter() {
 	         @Override
 	         public void mousePressed(MouseEvent e) {
+	        	 panel.requestFocus();
+	        	 
+	        	 if (SwingUtilities.isRightMouseButton(e))
+	        		 return;
+	        	 
 	        	 Component component = panel.getComponentAt(e.getPoint());
 	        	 if (component == null || !(component instanceof ImageComponent))
 	        		 return;
 	        	 
 	        	 ImageComponent imgComponent = (ImageComponent)component;
 	        	 
-	        	 int tileId = ArrayUtils.indexOf(worldHolder, imgComponent);
+	        	 int localTileId = ArrayUtils.indexOf(worldHolder, imgComponent);
+	        	 int worldTileX = (localTileId % localWidth) + offsetX;
+	        	 int worldTileY = (localTileId / localWidth) + offsetY;
+	        	 int tileId = (worldTileY * 25000) + worldTileX;
+	        	 
 	        	 if (selectedGroundTexture != null) {
-//	        		 modifiedGroundTextures.add(new RoomGroundTextureEntity(1, tileId, selectedGroundTexture.getId()));
-	        		 roomGroundTextureRepository.save(new RoomGroundTextureEntity(1, tileId, selectedGroundTexture.getId()));
+	        		 roomGroundTextureRepository.save(new RoomGroundTextureEntity(floor, tileId, selectedGroundTexture.getId()));
 	        		 imgComponent.groundTexture = selectedGroundTexture;
 	        	 }
 	        	 
 	        	 if (deleteScenery == true) {
 	        		 if (imgComponent.sceneryEntity != null) {
-	        			 roomSceneryRepository.delete(new RoomSceneryEntity(1, tileId, imgComponent.sceneryEntity.getId()));
-//	        			 roomSceneryRepository.deleteByRoomIdAndTileId(1, tileId);
+	        			 roomSceneryRepository.delete(new RoomSceneryEntity(floor, tileId, imgComponent.sceneryEntity.getId()));
 	        		 }
-	        		 
 	        		 imgComponent.sceneryEntity = null;
+	        		 
+	        		 if (imgComponent.npcEntity != null) {
+	        			 roomNpcRepository.delete(new RoomNpcEntity(floor, tileId, imgComponent.npcEntity.getId()));
+	        		 }
+	        		 imgComponent.npcEntity = null;
 	        	 }
-	        	 else if (selectedScenery != null) {
-//	        		 modifiedScenery.add(new RoomSceneryEntity(1, tileId, selectedScenery.getId()));
-	        		 roomSceneryRepository.save(new RoomSceneryEntity(1, tileId, selectedScenery.getId()));
-	        		 imgComponent.sceneryEntity = selectedScenery;
-	        	 }
+	        	 else {
+	        		 if (selectedScenery != null) {
+		        		 roomSceneryRepository.save(new RoomSceneryEntity(floor, tileId, selectedScenery.getId()));
+		        		 imgComponent.sceneryEntity = selectedScenery;
+		        	 }
+	        		 if (selectedNpc != null) {
+	        			 roomNpcRepository.save(new RoomNpcEntity(floor, tileId, selectedNpc.getId()));
+	        			 imgComponent.npcEntity = selectedNpc;
+	        		 }
+		         }
         		 
 	        	 panel.revalidate();
 	        	 component.repaint();
 	         }
 		});
 		
+		panel.addMouseMotionListener(new MouseMotionAdapter() {
+			@Override
+	         public void mouseMoved(MouseEvent e) {	        	 
+	        	 Component component = panel.getComponentAt(e.getPoint());
+	        	 if (component == null || !(component instanceof ImageComponent))
+	        		 return;
+	        	 
+	        	 if (component == hoverComponent)
+	        		 return;
+	        	 
+	        	 if (hoverComponent != null)
+	        		 hoverComponent.repaint();
+	        	 
+	        	 hoverComponent = (ImageComponent)component;
+	        	 component.repaint();
+	         }
+		});
+		
+		panel.addKeyListener(new KeyListener() {
+
+			@Override
+			public void keyTyped(KeyEvent e) {
+			}
+
+			@Override
+			public void keyPressed(KeyEvent e) {
+//				panel.requestFocus();
+				switch (e.getKeyCode()) {
+				case 37: // left
+					offsetX -= localWidth/ 2;
+					updateWorldHolder();
+					break;
+				case 38: // up
+					offsetY -= localHeight / 2;
+					updateWorldHolder();
+					break;
+				case 39: // right
+					offsetX += localWidth / 2;
+					updateWorldHolder();
+					break;
+				case 40: // down
+					offsetY += localHeight / 2;
+					updateWorldHolder();
+					break;
+					
+				case 33: // pageup
+					++floor;
+					updateWorldHolder();
+					break;
+					
+				case 34: // pagedown
+					--floor;
+					updateWorldHolder();
+					break;
+				
+				case 27:
+					selectedGroundTexture = null;
+	        		selectedScenery = null;
+					break;
+				}
+			}
+
+			@Override
+			public void keyReleased(KeyEvent e) {
+				// TODO Auto-generated method stub
+			}
+			
+		});
+		
 		return panel;
+	}
+	
+	private void updateWorldHolder() {
+		System.out.println(String.format("offsetX=%d, offsetY=%d", offsetX, offsetY));
+		Map<Integer, RoomGroundTextureEntity> groundTextures = roomGroundTextureRepository.findAllByXYWH(floor, offsetX, offsetY, localWidth, localHeight).stream().collect(Collectors.toMap(RoomGroundTextureEntity::getTileId, Function.identity()));
+		Map<Integer, RoomSceneryEntity> scenery = roomSceneryRepository.findAllByXYWH(floor, offsetX, offsetY, localWidth, localHeight).stream().collect(Collectors.toMap(RoomSceneryEntity::getTileId, Function.identity()));
+		Map<Integer, RoomNpcEntity> npcs = roomNpcRepository.findAllByXYWH(floor, offsetX, offsetY, localWidth, localHeight).stream().collect(Collectors.toMap(RoomNpcEntity::getTileId, Function.identity()));
+		
+		for (int y = 0; y < localHeight; ++y) {
+			for (int x = 0; x < localWidth; ++x) {
+				int tileX = x + offsetX;
+				int tileY = y + offsetY;
+				
+				int tileId = (tileY * 25000) + tileX;
+				RoomGroundTextureEntity entity = groundTextures.get(tileId);
+				worldHolder[(y*localWidth) + x].groundTexture = groundTextureEntityMapById.get(entity == null ? 0 : entity.getGroundTextureId());
+				
+				RoomSceneryEntity roomSceneryEntity = scenery.get(tileId);
+				worldHolder[(y*localWidth) + x].sceneryEntity = roomSceneryEntity == null ? null : sceneryEntitiesById.get(roomSceneryEntity.getSceneryId());
+				
+				RoomNpcEntity roomNpcEntity = npcs.get(tileId);
+				worldHolder[(y*localWidth) + x].npcEntity = roomNpcEntity == null ? null : npcEntitiesById.get(roomNpcEntity.getNpcId());
+				
+				worldHolder[(y*localWidth) + x].repaint();
+			}
+		}
 	}
 	
 	private Panel setupGuiPanel() {
 		Panel panel = new Panel();
 		panel.setLayout(null);
-		panel.setSize(200, 500);
+		panel.setSize(200, 800);
 		panel.setBackground(new Color(0, 100, 0));
 		
 		Panel selectedSpritePanel = new Panel();
@@ -310,7 +519,8 @@ public class Swing extends Frame implements ActionListener {
 				
 				SpriteMapEntity selectedEntity = null;
 				for (SpriteMapEntity entity : groundTextureSprites) {
-					if (entity.getName().equals(e.getItem())) {
+					String entityNameWithId = entity.getId() + ": " + entity.getName();
+					if (entityNameWithId.equals(e.getItem())) {
 						selectedEntity = entity;
 						break;
 					}
@@ -323,12 +533,11 @@ public class Swing extends Frame implements ActionListener {
 						for (GroundTextureEntity groundTexture : groundTextureEntityMapBySpriteMapId.get(selectedEntity.getId())) {
 							maxx = Math.max(maxx, groundTexture.getX());
 							maxy = Math.max(maxy, groundTexture.getY());
-							selectedSpritePanel.add(new ImageComponent(groundTexture));	
+							selectedSpritePanel.add(new ImageComponent(groundTexture, null, null));	
 						}
 						
 						selectedSpriteLayout.setColumns((maxx/32) + 1);
 						selectedSpriteLayout.setRows((maxy/32) + 1);
-//						selectedSpritePanel.setSize(new Dimension(maxx, maxy));
 					}
 				}
 
@@ -339,13 +548,13 @@ public class Swing extends Frame implements ActionListener {
 		});
 		groundTextureChoice.add("");
 		for (SpriteMapEntity entity : groundTextureSprites) {
-			groundTextureChoice.add(entity.getName());
+			groundTextureChoice.add(entity.getId() + ": " + entity.getName());
 		}
 		panel.add(groundTextureChoice);
 		
 		
 		Choice sceneryChoice = new Choice();
-		sceneryChoice.setBounds(0, 100, 200, 100);
+		sceneryChoice.setBounds(0, 150, 200, 100);
 		sceneryChoice.addItemListener(new ItemListener() {
 
 			@Override
@@ -356,23 +565,90 @@ public class Swing extends Frame implements ActionListener {
 				if (!item.isEmpty()) {
 					try {
 						int id = Integer.valueOf(item.substring(0, item.indexOf(':')));
-					
-						for (SceneryEntity entity : sceneryEntities) {
-							if (entity.getId() == id) {
-								selectedScenery = entity;
-								return;
-							}
-						}
+						selectedScenery = sceneryEntitiesById.get(id);
 					} catch (NumberFormatException ex) {
 						// idgaf
 					}
 				}
 		}});
 		sceneryChoice.add("");
-		for (SceneryEntity entity : sceneryEntities) {
+		for (SceneryEntity entity : sceneryEntitiesById.values()) {
 			sceneryChoice.add(entity.getId() + ": " + entity.getName());
 		}
+		sceneryChoice.setVisible(true);
 		panel.add(sceneryChoice);
+		
+		Choice npcChoice = new Choice();
+		npcChoice.setBounds(0, 150, 200, 100);
+		npcChoice.addItemListener(new ItemListener() {
+
+			@Override
+			public void itemStateChanged(ItemEvent e) {
+				selectedNpc = null;
+				String item = e.getItem().toString();
+
+				if (!item.isEmpty()) {
+					try {
+						int id = Integer.valueOf(item.substring(0, item.indexOf(':')));
+						selectedNpc = npcEntitiesById.get(id);
+					} catch (NumberFormatException ex) {
+						// idgaf
+					}
+				}
+			}
+		});
+		npcChoice.add("");
+		for (NpcEntity entity : npcEntitiesById.values()) {
+			npcChoice.add(entity.getId() + ": " + entity.getName());
+		}
+		npcChoice.setVisible(false);
+		panel.add(npcChoice);
+		
+		
+		int y = 0;
+		CheckboxGroup cbg = new CheckboxGroup();
+		String[] names = new String[] {"GroundItems", "Scenery", "NPCs"};
+		for (String name : names) {
+			Checkbox cb = new Checkbox(name, cbg, y == 0);
+			cb.setBounds(0, 80 + y, 100, 20);
+			cb.addItemListener(new ItemListener() {
+
+				@Override
+				public void itemStateChanged(ItemEvent e) {
+					groundTextureChoice.setVisible(false);
+					selectedSpritePanel.setVisible(false);
+					sceneryChoice.setVisible(false);
+					npcChoice.setVisible(false);
+					
+					selectedScenery = null;
+					selectedGroundTexture = null;
+					selectedNpc = null;
+					
+					switch (name) {
+					case "GroundItems": {
+						groundTextureChoice.setVisible(true);
+						selectedSpritePanel.setVisible(true);
+						break;
+					}
+					
+					case "Scenery": {
+						sceneryChoice.setVisible(true);
+						break;
+					}
+					
+					case "NPCs": {
+						npcChoice.setVisible(true);
+						break;
+					}
+					}
+				}
+				
+			});
+			
+			panel.add(cb);
+			y += 20;
+		}
+		
 		
 		return panel;
 	}

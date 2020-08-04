@@ -1,5 +1,7 @@
 package com.danscape.tool.jpa.entity;
 
+import java.util.Date;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
@@ -14,31 +16,29 @@ import lombok.NoArgsConstructor;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name="scenery")
-public class SceneryEntity {
+@Table(name="player")
+public class PlayerEntity {
 	@Id
 	private int id;
 	
 	private String name;
 	
-	@Column(name="sprite_frame_id")
-	private int spriteFrameId;
-	
-	// below values not used
 	@Transient
-	private String examine;
+	private String password;
 	
 	@Transient
-	@Column(name="leftclick_option")
-	private int leftclickOption;
+	@Column(name="password_salt")
+	private String passwordSalt;
 	
 	@Transient
-	@Column(name="other_options")
-	private int otherOptions;
+	@Column(name="last_logged_in")
+	private Date lastLoggedIn;
+	
+	@Column(name="tile_id")
+	private int tileId;
 	
 	@Transient
-	private int impassable;
-	
-	@Transient
-	private int attributes;
+	@Column(name="attack_style_id")
+	private int attackStyleId;
+	private int floor;
 }

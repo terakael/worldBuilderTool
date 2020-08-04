@@ -18,8 +18,8 @@ import lombok.NoArgsConstructor;
 @IdClass(RoomGroundTextureCompositeKey.class)
 public class RoomGroundTextureEntity {
 	@Id
-	@Column(name="room_id")
-	private int roomId;
+	@Column(name="floor")
+	private int floor;
 	
 	@Id
 	@Column(name="tile_id")

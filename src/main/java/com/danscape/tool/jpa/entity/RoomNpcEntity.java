@@ -3,6 +3,7 @@ package com.danscape.tool.jpa.entity;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.IdClass;
 import javax.persistence.Table;
 
 import lombok.AllArgsConstructor;
@@ -10,19 +11,20 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Getter
 @AllArgsConstructor
 @NoArgsConstructor
-@Table(name="ground_textures")
-public class GroundTextureEntity {
+@Getter
+@Table(name = "room_npcs")
+@IdClass(RoomNpcCompositeKey.class)
+public class RoomNpcEntity {
 	@Id
-	private int id;
+	@Column(name="floor")
+	private int floor;
 	
-	@Column(name="sprite_map_id")
-	private int spriteMapId;
+	@Id
+	@Column(name="tile_id")
+	private int tileId;
 	
-	private int x;
-	private int y;
-	
-	private boolean walkable;
+	@Column(name="npc_id")
+	private int npcId;
 }
