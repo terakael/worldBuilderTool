@@ -13,4 +13,7 @@ public interface RoomGroundTextureRepository extends JpaRepository<RoomGroundTex
 	
 	@Query(value="select floor, tile_id, ground_texture_id from room_ground_textures where floor=:floor and (tile_id%25000 between :x and :x+:w) and (floor(tile_id/25000) between :y and :y+:h)", nativeQuery=true)
 	public List<RoomGroundTextureEntity> findAllByXYWH(@Param("floor") int floor, @Param("x") int x, @Param("y") int y, @Param("w") int w,  @Param("h") int h);
+	
+	@Query(value="select distinct floor from room_ground_textures", nativeQuery=true)
+	public List<Integer> findDistinctFloors();
 }

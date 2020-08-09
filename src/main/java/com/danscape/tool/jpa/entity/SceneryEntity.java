@@ -24,6 +24,8 @@ public class SceneryEntity {
 	@Column(name="sprite_frame_id")
 	private int spriteFrameId;
 	
+	private int impassable;
+	
 	// below values not used
 	@Transient
 	private String examine;
@@ -35,9 +37,6 @@ public class SceneryEntity {
 	@Transient
 	@Column(name="other_options")
 	private int otherOptions;
-	
-	@Transient
-	private int impassable;
 	
 	@Transient
 	private int attributes;
