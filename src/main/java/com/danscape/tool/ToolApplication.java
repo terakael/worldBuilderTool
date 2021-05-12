@@ -36,6 +36,7 @@ public class ToolApplication implements CommandLineRunner {
 			
 			Integer floor = null;
 			Integer segment = null;
+			boolean generateFullMap = false;
 			for (int i = 1; i < args.length; ++i) {
 				switch (args[i].charAt(0)) {
 				case 'f': { // floor
@@ -47,8 +48,11 @@ public class ToolApplication implements CommandLineRunner {
 					break;
 				}
 				}
+				
+				if (args[i].equals("generateFullMap"))
+					generateFullMap = true;
 			}
-			generator.generate(floor, segment);
+			generator.generate(floor, segment, generateFullMap);
 		}
 	}
 

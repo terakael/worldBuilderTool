@@ -133,8 +133,8 @@ public class Swing extends Frame implements ActionListener {
 		Optional<PlayerEntity> godEntity = playerRepository.findById(3);// god
 		if (godEntity.isPresent()) {
 			floor = godEntity.get().getFloor();
-			offsetX = (godEntity.get().getTileId() % 25000) - (localWidth / 2);
-			offsetY = (godEntity.get().getTileId() / 25000) - (localHeight / 2);
+			offsetX = (godEntity.get().getTileId() % Config.MAP_ROW_TILE_LENGTH) - (localWidth / 2);
+			offsetY = (godEntity.get().getTileId() / Config.MAP_ROW_TILE_LENGTH) - (localHeight / 2);
 		}
 		
 		spriteFrames = spriteFrameRepository.findAll().stream().collect(Collectors.toMap(SpriteFrameEntity::getId, Function.identity()));
@@ -338,7 +338,7 @@ public class Swing extends Frame implements ActionListener {
 	        	 int localTileId = ArrayUtils.indexOf(worldHolder, imgComponent);
 	        	 int worldTileX = (localTileId % localWidth) + offsetX;
 	        	 int worldTileY = (localTileId / localWidth) + offsetY;
-	        	 int tileId = (worldTileY * 25000) + worldTileX;
+	        	 int tileId = (worldTileY * Config.MAP_ROW_TILE_LENGTH) + worldTileX;
 	        	 
 	        	 if (selectedGroundTexture != null) {
 	        		 roomGroundTextureRepository.save(new RoomGroundTextureEntity(floor, tileId, selectedGroundTexture.getId()));
@@ -455,7 +455,7 @@ public class Swing extends Frame implements ActionListener {
 				int tileX = x + offsetX;
 				int tileY = y + offsetY;
 				
-				int tileId = (tileY * 25000) + tileX;
+				int tileId = (tileY * Config.MAP_ROW_TILE_LENGTH) + tileX;
 				RoomGroundTextureEntity entity = groundTextures.get(tileId);
 				worldHolder[(y*localWidth) + x].groundTexture = groundTextureEntityMapById.get(entity == null ? 0 : entity.getGroundTextureId());
 				

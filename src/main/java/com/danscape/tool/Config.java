@@ -9,4 +9,6 @@ public class Config {
 	public Swing swing() {
 		return new Swing();
 	}
+	
+	public static int MAP_ROW_TILE_LENGTH = 46325;
 }
